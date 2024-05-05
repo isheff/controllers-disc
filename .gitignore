@@ -1,3 +1,11 @@
+# Project-specific rules
+# I have no idea what .vtc is, but latexmk generated one, so let's not store that:
+*.vtc
+# I don't want to store the bbl file generated from the bib file
+main.bbl
+# I don't want to store the main document built: we're just storing source
+main.pdf
+
 ## Based on https://raw.githubusercontent.com/github/gitignore/master/TeX.gitignore
 ## Core latex/pdflatex auxiliary files:
 *.aux
