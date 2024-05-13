@@ -139,29 +139,32 @@ In a sense, these labels represent a distributed \emph{taint tracking} or \emph{
 One challenge is avoiding size explosion in this dependency graph: we enable removing unnecessary parts of history when, say, a resource transfers from $A$ to $B$ and back to $A$ again.
 In taint tracking or information flow control terms, these operations require \emph{endorsement}.
 Our resource controller operations generalize a number of techniques used in blockchain settings.
-We discuss rules and procedures for creating, updating, transferring, and tracking the state of labeled resources.  
+We define rules and procedures for creating, updating, transferring, and tracking the state of labeled resources, and prove that our rules maintain safety properties including \emph{causal resource history} and \emph{consistent controller labels}.
+We also prove that some operations (non-blocking local reduction) are impossible without violating these safety properties. 
 \end{abstract}
 
 \section{Introduction}
-Blockchain interoperability is crucial to improve cost, usability, adoption, and even security. 
-When applications must share a chain (or, more generally, \emph{controller}) to interact, there is an incentive to push all applications onto one controller trustworthy enough (and with enough throughput) for everyone. 
-Attempts to create such a controller require an extremely expensive global consensus (e.g., Ethereum) and remain inadequate for some applications: JP~Morgan does not trust Ethereum to control their accounts~\cite{onyx}.
+Distributed platform interoperability is crucial to improve cost, usability, adoption, and even security. 
+When When applications must share a state machine (or, more generally, \emph{controller}) to interact, there is an incentive to push all applications onto one controller trustworthy enough (and with enough throughput) for everyone. 
+Attempts to create such a controller typically require trust in a single authority (e.g. AWS\cite{citation-needed}) or an extremely expensive global consensus (e.g., Ethereum) and remain inadequate for some applications:
+ JP~Morgan does not trust Ethereum to control their accounts~\cite{onyx}.
 In fact, it is unlikely that \emph{all} worthwhile applications will ever agree on a controller who can manage all of their state.
 This is why interoperability is so important: the internet works not because we all trust some single authority to manage all of it but because many different applications in different trust domains can interact. 
 
 Nevertheless, cross-domain data integrity remains a challenge.
 While  existing systems can track controllers that may have affected each datum~\cite{dista,fabric}, these can easily lead to a state explosion: each object's label features an ever-growing set of controllers that may have affected it. 
-Some cross-blockchain protocols cleverly get around this: objects can reduce their labeling burden when one controller \emph{endorses} another, reviewing (some part of) its history and, crucially, pledging not to endorse a contradictory history.
-For example, blockchains can create \emph{wrapped} tokens with IBC~\cite{wrapped,ibc}. 
+In blockchain ecosystems, some protocols cleverly get around this: objects can reduce their labeling burden when one controller \emph{endorses} another, reviewing (some part of) its history and, crucially, pledging not to endorse a contradictory history.
+For example, blockchains can create \emph{wrapped} tokens with IBC and ICS20~\cite{wrapped,ibc, ics20}. 
 A wrapper represents a controller that had previously controlled the token, and nested wrappers represent a list of controllers. 
 A controller can \emph{unwrap} a token with a simple but effective review of the wrapped token history. 
 It checks a crucial invariant: it will unwrap no more tokens of each type from each destination than it wrapped. 
 In this work, we generalize this controller history tracking and endorsement approach, and enable fully general transferable digital objects (not only tokens), with arbitrary transactions. 
-Crucially, this means generalizing histories from a list of controllers to a DAG.
+Crucially, this means generalizing resource histories from a list of wrapping controllers to a DAG.
+This endorsement approach differs somewhat from some Information Flow Control approaches~\cite{fabric, citation-needed}, in that we assume controllers can review and endorse entire execution traces of other controllers, and check for contradictions.
 
-Here, we introduce a novel protocol for controllers that enables very general cross-chain operations.
-Our controller protocol will be part of a larger unified multi-chain architecture, with standards for each blockchain's state machine, as well as transferable objects called \emph{resources}~\cite{resource}.
-Here, we detail controller operations that allow our architecture to generalize many cross-chain and side-chain techniques. 
+Here, we introduce a novel protocol for controllers that enables very general operations across state machines with different trust domains.
+Our controller protocol will eventually be part of a larger unified multi-state-machine architecture, with standards for each state machine, as well as transferable objects called \emph{resources}~\cite{resource}.
+Here, we detail controller operations that allow our architecture to generalize many existing techniques (including many cross-chain and side-chain operations). 
 
 
 
@@ -179,55 +182,60 @@ Here, we detail controller operations that allow our architecture to generalize 
 
 \subsection{Controllers}  
 Controllers are a key component of any transaction processing state machine, including blockchains~\cite{smr,statemachine}.
-The controller is the component that \emph{orders}: it decides on an ever-growing sequence of transactions defining the history, and thus the current state, of a state machine.
-For some blockchains, this sequence is literally the blockchain data structure.
+We define the controller as the component that \emph{orders}: it decides on an ever-growing sequence of transactions defining the execution trace, and thus the current state, of a state machine.
+% ICS: for the DISC audience, this is unnecessary: For some blockchains, this sequence is literally the blockchain data structure.
 %If the \textit{global state machine} \replace{includes}{covers/treats/...} all resources, commitments, and nullifiers ever produced, then each controller decides an order for transactions that use its portion of the state machine:\footnote{is it really a portion of \emph{the state machine}, as opposed to just state?} those using its own portion of the state.
-Controllers do not have to compute and store this state themselves, although it may be efficient to do so.
-Committing to an ever-growing sequence of transactions, however, does require that controllers keep \textit{some} state, to ensure they do not \emph{fork}: commit two contradictory histories (neither is a prefix of the other).
+Controllers do not necessarily compute and store this state themselves, although it may be efficient to do so.
+Committing to an ever-growing sequence of transactions, however, does require that controllers keep \textit{some} state, to ensure they do not \emph{fork}: commit two contradictory traces (neither is a prefix of the other).
 Forks are the essence of, for example, double-spend attacks~\cite{Abraham2017}.
 
-Trusting controllers is fundamental for digital objects: a smart contract on Ethereum is consistent iff the Ethereum controller is working properly.
+Trusting controllers is fundamental for digital objects: tables in Postgres maintain their invariants iff the database is working properly~\cite{citation-needed}.
+Similarly, a smart contract on Ethereum is consistent iff the Ethereum controller is working properly\cite{citation-needed?}.
 We categorize controllers in terms of safety and liveness:
 \begin{itemize}
-\item \textit{Safe} controllers commit transactions only in sequence: they do not fork.
-Furthermore, they only update their state as specified by valid transactions (atomic transitions defined by the state machine).
-  \textit{Unsafe} controllers are also called \textit{malicious} or \textit{byzantine}.  
-\item \textit{Live} controllers eventually respond to valid queries, and append valid transactions to their sequence.
-  Controllers that are not live are called \textit{unlive}, \textit{crash-prone}, or sometimes just \textit{crashed}.
+\item \emph{Safe} controllers commit transactions only in a totally ordered sequence (called a \emph{trace}): they do not fork.
+The \emph{state} of a valid controller is unique and defined as the result serially applying the transactions (atomic transitions defined by the state machine) in the trace committed, and ignoring any \emph{invalid} transactions (as defined by the state machine).
+  \emph{Unsafe} controllers are also called \emph{malicious} or \emph{Byzantine}.  
+\item \emph{Live} controllers eventually respond to valid queries, and append valid transactions to their trace.
+  Controllers that are not live are called \emph{unlive}, \emph{crash-prone}, or sometimes just \emph{crashed}.
 \end{itemize}
 In general, we assume all unsafe controllers are unlive: controllers that are not following the specification could just choose to ignore all queries.
 
 
 \subsection{Resources}
-%TODO: describe resources
 Our architecture tracks specific types of transferable digital objects, which we call \emph{resources}~\cite{resource}.
+We can encode extremely general mutable state with resources, but resources themselves are fairly simple.
 Each resource can be \emph{not yet created}, \emph{created}, or \emph{consumed}.
 Resources are \emph{not yet created} by default, can transition to \emph{created}, and then to \emph{consumed}.
 Resources transition between these states in transactions ordered by controllers.
 Each resource therefore specifies a single controller that can order transactions for each type of transition, ensuring there is a single authority in charge of deciding whether each transition has or has not occurred.
 Transactions which perform a state transition but are ordered by the wrong controller are \emph{invalid}.
 
-Each controller's state carries cryptographic accumulators (e.g. a Merkle roots) representing the set of resources created by transactions ordered by this controller and the set of resources consumed.
+Each controller's state carries cryptographic accumulators (e.g. Merkle roots~\cite{citation-needed}) representing the set of resources created by transactions ordered by this controller and the set of resources consumed.
 If a resource is neither created nor consumed, it is \emph{not yet created}.
-Resources can have complex proof obligations (which we call \emph{resource logics}) determining when they can be created or consumed, and these may depend on the state of other resources, even on other controllers.
-Through these logics, resources can encode fairly arbitrary state, not limited to tokens, while still allowing ZKP-style confidential transactions~\cite{resource}.
+Resources can have complex proof obligations (which we call \emph{resource logics}) determining when they can be created or consumed, and these may depend on the state of other resources. % ICS: eliding for now: , even on other controllers.
+A resource logic can for example, specify exactly what programs can consume this resource: it would require a proof that the resources created are precisely the outputs of running a particular program with the consumed resources as inputs.
+Such a proof might be as simple as a full execution trace of the program, or as complex as a zero-knowledge proof~\cite{citation-needed}.
+Through these logics, resources can encode fairly arbitrary state, not limited to scalar registers or tokens, while still allowing ZKP-style confidential transactions~\cite{resource}.
 
 \subsection{Transactions}
 Transactions are atomic state transitions~\cite{smr,statemachine}.
 For our purposes, transactions designate a set of resources (which must be \emph{created}) as \emph{inputs}, \emph{consume} some subset of their inputs, and \emph{create} some \emph{output} resources.
-If a controller uses a replicated state machine (such as a blockchain), it is very important that these transactions are deterministic so everyone agrees on each new state.
+In general, we assume these transactions are deterministic, so each new state is uniquely defined.
 Transactions can only update state controlled by one controller, and must include checkable proofs that all of the resource logics of each resource created or consumed are satisfied.
 However, input resources may have been \emph{created} in a transaction on another controller.
 Therefore, controllers can sync with one another, allowing transactions to check if resources on other controllers have been created.
-These syncs are asynchronous, so it is possible a transaction will not immediately be able to prove that a resource has been created.
+These updates can be asynchronous, so it is possible a transaction will not immediately be able to prove that a resource has been created.
 
 \subsection{Labels}
-Resources themselves carry \emph{labels} concerning controllers who can or have affected the history of that resource.
-We will detail exactly what these labels will be later, but they include, among other things, a \textit{terminal} controller.
+Resources themselves carry \emph{labels} concerning controllers who can or have affected the history (or ancestry) of that resource.
+We will detail exactly what these labels will be later, but they include, among other things,
+ a \emph{creating} controller, whose state defines whether this resource has transitioned from \emph{not yet created} to \emph{created}, and a \emph{terminal} controller, whose state defines whether this resource is \emph{consumed}.
 Any transaction with this resource as an input must be ordered by its terminal controller.
 This ensures there are never two controllers trying to consume the same resource with different transactions.
 For example, imagine a resource representing a token, created on some controller $A$.
-If controller $B$ orders a transaction that spends this token to Alice, and controller $C$ orders a transaction that spends this token to Bob, then we have a double-spend.
+If controller $B$ orders a transaction that consumes this token and creates a new token called \emph{Alice}, and controller $C$ orders a transaction that consumes this token and creates a new token called \emph{Bob}, then we have a ``double-consume:'' together, \emph{Alice} and \emph{Bob}'s histories represent the token being consumed twice, which should not happen.
+This is clearly a problem if the tokens have, say, monetary value: it's a double-spend~\cite{citation-needed}.
 Terminal controllers solve the problem: if the resource specifies it can only be used by transactions on $B$, then the token can only be double-spent if $B$ forks.
 
 We might imagine labels which include a set of \textit{affecting} controllers, who have influenced this resource's history (or provenance).
@@ -242,7 +250,7 @@ In general, we can ``transfer'' a resource from one controller to another: we co
 \end{figure}
 Suppose four controllers ($A,B,C,$ and $D$) order transactions for a virtual cooking application (shown in~\cref{fig:salad}).
 In the beginning, a tomato resource (0) and a cucumber resource (3) are on controller $A$.
-The tomato resource transfers to $B$ (resource 0 is consumed, requiring whatever permissions are required to move a tomato, and resource 1 is created), and then, after some $B$-only transactions, it transfers to $D$ (resource 4).
+The tomato resource transfers to $B$ (resource 0 is consumed, requiring whatever proofs are required to move a tomato, and resource 1 is created), and then, after some $B$-only transactions, it transfers to $D$ (resource 4).
 Likewise, the cucumber resource transfers to $C$ and then to $D$ (resource 7).
 On $D$, a transaction consumes both the tomato and cucumber resources to create a salad resource (resource 8). 
 At this point, the salad resource's history depends on $A$, $B$, $C$, and $D$.
@@ -254,7 +262,7 @@ They can be removed from the affecting controllers of the salad's label.
 
 \section{Desiderata}
 There are several properties we want our controllers and resource labels to have.
-As a running example, consider~\cref{fig:saladfork}, a version of our salad example in which controller $B$ has forked into two sequences: gray and black. 
+As a running example, consider~\cref{fig:saladfork}, a version of our salad example in which controller $B$ has forked into two traces: gray and black. 
 Resource 10 (and therefore 11) has a \emph{conflicting} history with resource 2 (and therefore, 4, 8, and 9).
 
 
@@ -265,8 +273,9 @@ Here, as we lack global time, we require only that a transaction's inputs have n
 transaction, whose inputs were resources with CRH. 
 This property is relatively easy to prove with recursive zero knowledge proofs (compared with some stricter properties we'll get to later)~\cite{nova}.
 In general, in order to maintain CRH, a resource should carry a (recursive) proof that it was created in a valid transaction, the inputs of which had CRH proofs. 
+In fact, CRH can be implemented in resource logics.
 
-This property is not perfect: it still permits histories we might want to call \emph{inconsistent}, including double-spends.
+This property is not perfect: it still permits histories we might want to call \emph{inconsistent}, including double-consumes.
 For example, in~\cref{fig:saladfork}, any future resource that depends on resources 9 and 11 (so, something constructed by consuming the salad and the tomato), would have a history in which the same tomato (which started as resource 0), is consumed twice, but would still have CRH.
 
 
@@ -284,25 +293,26 @@ For example, in~\cref{fig:saladfork}, any future resource that depends on resour
 \subsection{Serializable Resource History (SRH)}
 Here we define what we consider \emph{consistent}: each resource (individually) reflects some fully serializable history featuring only correct atomic transactions (and no forks)~\cite{serializability}. 
 Equivalently, in the resource's history, all transactions are valid, and no resource is used as an input for a transaction after it has been consumed. 
-In our~\cref{fig:saladfork} example, resources 11 and 9 individually have SRH, but they cannot both appear in the history of any future resource with SRH (no one can consume both as an ingredient in some transaction).
+In our~\cref{fig:saladfork} example, resources 11 and 9 individually have SRH, but they cannot both appear in the history of any future resource with SRH (no one can consume both as an input in some transaction).
 Alternatively, you could not combine money from both sides of the double-spend for one big purchase.
 SRH can be easily generalized to a group of resources by imagining a new resource that depends on all of the resources in the group, and checking if it has SRH.
 
 Maintaining SRH requires some kind of mechanism for checking if two resources can both be part of some future resource's history. 
-Effectively, any such mechanism checks for forks, and can be used to filter for resources have SRH.
+Effectively, any such mechanism checks for forks, and can be used to filter for resources that have SRH.
 
 %If a resource is part of\footnote{\emph{is part of} in what sense part of ???} a consistent controller state, then it must have a consistent resource history. 
 %Likewise, if some resource's ancestors include all the resources on a controller, and that resource has a consistent resource history, then that controller has a consistent controller state.\footnote{something to understand about \emph{controller state}, best with an example of some specific paradigmatic type of controller state}
 
-In~\cref{sec:resourcevectorclocks}, we detail a technique for maintaining SRH for all resources, but it is can require very expensive computation and requires each resource to carry an ever-growing set of controllers in its label. 
-Below, our technique instead allows users to introduce a little trust into the system, and dramatically improve day-to-day operations.
+In~\cref{sec:resourcevectorclocks}, we detail a technique for maintaining SRH for all resources, but it can require very expensive computation and requires each resource to carry an ever-growing set of controllers in its label. 
+Instead, we allow users to introduce a little trust into the system, and dramatically improve day-to-day operations.
 We will detail techniques for checking SRH while using our technique, but each check can require a lot of information.
 
 \subsection{Consistent Controller Label (CCL)}
-To help address this problem, we introduce another property: \emph{Consistent Controller Labels (CCL)}.
-In general, a safe controller never uses a resource as a transaction input after it has been consumed: all inputs to any transaction it commits are existing,  unconsumed resources, and the transaction consumes (some subset of) those inputs, and produces new resources. 
-The CCL property requires that if some resource~$r$ does not have SRH, then it has an unsafe controller in the \textit{affecting controllers} of its label.
-With CCL and CRH, if a user \textit{trusts} all the controllers in a resource's label, they can be sure the resource has a consistent resource history. 
+In general, a safe controller never uses a resource as a transaction input after it has been consumed: all inputs to any transaction it commits are created, unconsumed resources, and the transaction consumes (some subset of) those inputs, and creates new resources. 
+The \emph{Consistent Controller Labels}  property (CCL) requires that if some resource~$r$ does not have SRH, then it has an unsafe controller in the \textit{affecting controllers} set in its label.
+With CCL and CRH, if a user \textit{trusts} that a resource's affecting controllers are all safe, they can be sure the resource has a consistent resource history. 
+
+% TODO: make this a little theorem and make a proof?
 
 One easy way to maintain this would be to start with a system that maintains CRH, and label every resource with every controller involved in its history (affecting controllers). 
 If all the controllers are safe, then the resource has SRH. 
@@ -322,6 +332,7 @@ In this approach, we maintain CRH and CCL, with relatively little overhead.
 % The problem is that presenting all those other techniques first takes space and time. 
 Resource label size can be kept proportional to the number of controllers in its history (in the worst case), but in the best case is much smaller.
 Moving a resource between controllers is relatively cheap, requiring only few simple checks and a single endorsement (which can be done as two recursive ZKP checks).
+Endorsements are not resource-specific, so they can be done opportunistically and their costs amortized. 
 
 \subsection{Controller State}
 Suppose that each controller has a unique \emph{controller id}.
@@ -343,7 +354,7 @@ endorsement & map: controller id $\rightarrow$ state root & state roots of other
 \label{tab:controllerstate}
 \end{table*}
 
-\noindent The \textit{endorsement} map starts with every controller id mapping to origin (whatever state root it must start with; this may be encoded in the controller id itself).
+\noindent The \textit{endorsement} map starts with every controller id mapping to genesis (whatever state root it must start with; this may be defined in the controller id itself).
 There is one exception: the element for this controller's id is the state root for this state.
 We also introduce a new type of transaction.
 A controller id's endorsement element can be updated, given:
@@ -357,6 +368,7 @@ Note that this update does \emph{not} require any kind of recursive update of co
 Each resource label includes a DAG representing controllers who have affected
 the history of this resource. Each \textit{node} of this DAG includes the fields
 in~\Cref{tab:resourcelabel}.
+The set of all controllers from all the nodes of this DAG are the resource's \emph{affecting controllers}.
 
 
 \begin{table*}
@@ -365,8 +377,8 @@ in~\Cref{tab:resourcelabel}.
 \textbf{Field} & \textbf{Type} & \textbf{Description} \\\hline
 controller & controller id & a controller who affected this resource's history \\\hline
 state & state root & a state root from this controller \textit{after} (or equal to) the state resulting form the transaction that affected this resource's history \\\hline
-origin & boolean & Is this resource (or some part of its history) the result of a transaction that could \textit{only} have run on this controller, or would not be able to run on arbitrary controllers? Origin nodes cannot be removed.\\\hline
-reducing & $\bot$ or $\left\langle\textrm{controller id, state root}\right\rangle$ & Are we in the process or removing this node from this controller DAG? (described below)\\\hline
+removable & boolean & If this resource (or some part of its history) the result of a transaction that could \textit{only} have run on this controller, or would not be able to run on arbitrary controllers, then this must be false.\\\hline
+reducing & $\bot$ or $\an{\textrm{controller id, state root}}$ & Are we in the process or removing this node from this controller DAG? (described below)\\\hline
 \end{tabular}}
 \caption{Fields in a resource controller label.}
 \label{tab:resourcelabel}
@@ -384,8 +396,8 @@ in~\Cref{tab:resourcelabel2}.
 \begin{tabular}{|l|l|p{0.5\textwidth}|}\hline
 \textbf{Field} & \textbf{Type} & \textbf{Description} \\\hline
 creating & node & specifies a particular node (not necessarily the terminal one) in the controller DAG which represents the creation of this resource.
-This resource must be included in the created resources of the state corresponding to the state root of this node.\\\hline
-backup & list of controller ids & If the terminal controller halts, who gets to be the new terminal controller? If that controller has halted, who gets to be the new terminal controller? and so on\dots\\\hline
+The state corresponding to the state root of this node must prove this resource has been \emph{created}.\\\hline
+backup & list of controller ids & If the terminal controller halts, who will be the new terminal controller? If that controller has halted, who will be the new terminal controller? and so on\dots\\\hline
 \end{tabular}}
 \caption{Fields in a resource label.}
 \label{tab:resourcelabel2}
@@ -394,38 +406,40 @@ backup & list of controller ids & If the terminal controller halts, who gets to 
 
 \subsection{Creating a resource}
 A transaction must use as inputs resources with the same terminal controller: the controller that orders the transaction. 
-The terminal controller can check its own state to determine if any of the input resources have been consumed (which would make the transaction invalid).
-To determine if all the input resources have in fact been created, the terminal controller needs to check whether the creating controller of the resource has created it. 
-In other words, the endorsement entry for each of the input resource's creating controllers must be provably after the state root for each resource's creating node. 
-This ensures CRH: every resource is the result of a valid transaction whose inputs had CRH. 
+The terminal controller's state determines if any of the input resources have been consumed (which would make the transaction invalid).
+To determine if all the input resources have in fact been created, one must check whether the creating controller of the resource has created it. 
+To ensure CRH, we require the endorsement entry for each of the input resource's creating controllers to be provably after the state root for each resource's creating node. 
+Since endorsement entries require valid proofs, this ensures CRH: each input resource is the result of a valid transaction whose inputs had CRH. 
 
 A created resource can \textit{depend} on input resources, meaning the new resource's history includes those input resources, and their histories. 
-In general, it is safe for a created resource to depend on all the input resources for the transaction; this would work for very general applications.
-However, we might allow resource logics to specify a subset of the input resources on which they depend: for example, only those resources necessary to prove the new resource can be created. 
-We might imagine a UTXO-style currency application which tracks only input resources of the same type as dependencies: anything which was necessary to authorize a ``spend'' isn't considered part of the history of the currency resource.
+In general, it is safe for a created resource to depend on all the input resources used in proofs of the resource's logic; this would work for very general applications.
+However, we might allow resource logics to specify a subset of the input resources on which they depend. 
+We might imagine a UTXO-style currency application~\cite{citation-needed} which tracks only input resources of the same currency as dependencies: anything which was necessary to authorize a ``spend'' isn't considered part of the history of the currency resource.
 
 For any created resource, the controller DAG is the union of the controller DAGs of the input resources on which it depends, with an edge from their terminal controllers to a node featuring this controller's id and current state root. 
 This node is the resource's \textit{creating} node. 
-The controller node's \textit{origin} field should be true iff this transaction cannot be run on an arbitrary controller, but requires something special about this controller (e.g. issuing a currency). 
+The controller node's \textit{removable} field should be false iff this transaction cannot be run on an arbitrary controller, but requires something special about this controller (e.g. issuing a currency, or a state change corresponding to a real-world action that can only be certified here). 
 The controller may then include an additional edge from the creating node to a new terminal node, featuring a different controller id and a genesis state root. 
 
 When the creating node is not the terminal node, this is a \textit{transfer}.
 The resource has ``transferred'' to a different controller from its ancestors. 
 
-For example, in~\cref{fig:saladfork}, resource 3 would need a creating node $A@3$ (representing the state controller $A$ had just after creating resource $3$.
+For example, in~\cref{fig:saladfork}, resource 3 would need a creating node $A@3$ (representing the state controller $A$ had just after creating resource $3$).
 Since $3$ is a transfer (it must be consumed on controller $C$), it also has terminal node $C@\bot$ ($\bot$ representing a genesis state root). 
 Resource 3's controller DAG must, therefore, be (at least) $A@3 \rightarrow C@\bot$.
 
 \subsection{Reducing a Controller DAG}
-There are several ways to ``remove'' a node from a controller DAG: transactions that consume the resource and replace it with a similar resource whose controller DAG is similar but missing one node. 
+There are several ways to ``remove'' a node from a controller DAG.
+These operations are transactions that consume the resource and replace it with a similar resource whose controller DAG is similar but missing one node. 
 The simplest is condensing a single controller.
 
 \subsubsection{Condensing a Single Controller}
 If there is some subset of nodes featuring all the same controller id, and if it would not create a cycle, the subset can be replaced with a single node featuring the same controller id and a state root that is proven after (or equal to) all the state roots in the subset. 
 All ancestors of any subset element become ancestors of the new node, and all descendants of the subset become descendants of the new node. 
+This transition trivially preserves CCL, since it doesn't change the set of affecting controllers. 
 It may be convenient to do this while creating a resource for simplicity.
 
-For example, in~\cref{fig:saladfork}, resource 3 has controller DAG $A@3 \rightarrow C@\bot$, so resource 6 could have controller DAG: $A@3 \rightarrow C@\bot\rightarrow C@5\rightarrow C@6$, but we can condense the $C$ nodes to reduce the controller DAG to: $A@3 \rightarrow C@6$.
+For example, in~\cref{fig:saladfork}, suppose resource 3 has controller DAG $A@3 \rightarrow C@\bot$, so resource 6 could have controller DAG: $A@3 \rightarrow C@\bot\rightarrow C@5\rightarrow C@6$, but we can condense the $C$ nodes to reduce the controller DAG to: $A@3 \rightarrow C@6$.
 Using the same process, we can reduce resource 9's controller DAG
 
 \begin{center}
@@ -480,20 +494,20 @@ Using the same process, we can reduce resource 9's controller DAG
 \end{center}
 
 \subsubsection{Endorsement}
-We can use the controller's endorsement fields to remove unnecessary elements from a resource's controller DAG.
-The idea is that if a resource's history involves moving to some intermediate controller controller, doing some transactions, and then moving on, the intermediate controller is \textit{arbitrary}: as long as other controllers are willing to check the part of the history done on the intermediate controller, they can claim they ``may as well have'' done those state changes themselves, and remove the intermediate controller.
-This kind of endorsement-based DAG reduction generalizes IBC's \emph{unwrapping} \cite{wrapped,ibc}.
+We can use the controller's endorsement map to remove unnecessary elements from a resource's controller DAG.
+The idea is that if a resource's history involves moving to some intermediate controller, doing some transactions, and then moving on, the intermediate controller is \textit{arbitrary}: as long as other controllers are willing to check the part of the history done on the intermediate controller, they can claim they ``may as well have'' done those state changes themselves, and remove the intermediate controller.
+This kind of endorsement-based DAG reduction generalizes IBC and ICS20's \emph{unwrapping} \cite{wrapped,ibc,ics20}.
 In our~\cref{fig:saladfork} example, $A$ could endorse $C$, $D$, and (one fork of) $B$, and then reduce resource 9's controller DAG to just $A@9$.
 The challenge is to do this in a way that provably maintains CCL. 
-We would not want to allow resource 11 to end up with a DAG that doesn't contain $B$, or someone could consume resources 9 and 11 to create a new resource that doesn't have SRH, and also doesn't have $B$ in its controller DAG, which would violate CCL.
+We would not want to allow resource 11 to end up with a DAG that doesn't contain $B$, or someone could consume resources 9 and 11 to create a new resource that doesn't have SRH (it contains a double-consume of a tomato), and also doesn't have $B$ in its controller DAG: that would violate CCL.
 There are a number of subtleties here, so we start with some definitions.
 
 \begin{definition}[Endorsement]
-A controller DAG node $X$ \textit{endorses} a controller DAG node $Y$ if $X$'s state root corresponds with a state featuring an endorsement entry for the controller id in $Y$ with a state root that is proven after $Y$'s state root. 
+A controller DAG node $X$ \textit{endorses} a controller DAG node $Y$ if $X$'s state root corresponds to a state featuring an endorsement entry for the controller id in $Y$ with a state root that is proven after $Y$'s state root. 
 \end{definition}
 
 \begin{definition}[Remove]
-We \textit{remove} a node from a resource's controller DAG if we consume the resource, and replace it with an identical one whose controller DAG is missing the node. 
+We \textit{remove} a node from a resource's controller DAG if we consume the resource, and create an identical one whose controller DAG is missing the node. 
 Instead, the new resource's controller DAG has edges from all of the removed node's parents to all of the removed node's children.
 \end{definition}
 %Next we explore some ideas about how we might reduce a controller DAG using Endorsement. 
@@ -504,26 +518,27 @@ Instead, the new resource's controller DAG has edges from all of the removed nod
 %This Reduction rule cannot be used safely if there is also an ``ancestral endorsement reduction'' policy in effect. 
 %Possibly we could have resources in ``ancestral'' or ``blocking local'' modes, but I'm not exactly sure how that would work.
 Here we detail a technique enabling \emph{local} reduction: we can remove a node from a controller DAG, and require participation only from the controller being removed, its neighbors in the controller DAG, and the terminal controller. 
-What's more, for all but the terminal controller, we only require endorsements of other controllers: if they're opportunistically endorsing other controllers anyway, then this reduction is extremely inexpensive.
+What's more, for all but the terminal controller, we only require endorsements of other controllers: if they're opportunistically endorsing other controllers anyway, then this reduction is inexpensive.
 
-Here we will actually use the \textit{reducing} field of controller DAG nodes, which carries either $\bot$ (by default), or a controller id, state root pair.
+Here we will use the \textit{reducing} field of controller DAG nodes, which carries either $\bot$ (by default), or a $\an{\textrm{controller id, state root}}$ pair.
 This flag represents whether the resource is ``in the process'' of removing the node from its controller DAG.
 There are a few requirements for setting \textit{reducing} to not-$\bot$ for a node with controller id $C$:
 \begin{itemize}
 \item All nodes have \textit{reducing} set to $\bot$ by default. 
-\item Once \textit{reducing} has been set to not-$\bot$, it cannot be changed: any resources created by transactions with this input either feature this node with this reducing entry, or do not feature this node.
+\item If \textit{reducing} is not-$\bot$, it cannot be changed: any resources that depend on this resource either feature this node with this reducing entry, or do not feature this node.
 \item A node cannot be removed if it has a parent or child with \textit{reducing} not equal to $\bot$. 
 \item A node must have \textit{reducing}  $=\bot$ if it has no parents, or if it has neighbor with \textit{reducing} $\ne\bot$. 
-\item For a transaction that sets a \textit{reducing} field from $\bot$ to non-$\bot$, the creating node must have endorsed \textit{all} nodes in the DAG with controller id $C$.
+\item For a transaction that sets a \textit{reducing} field from $\bot$ to non-$\bot$, (consumes a resource in which this field is $\bot$ and produces a resource in which this field is not $\bot$) the creating node must have endorsed \textit{all} nodes in the DAG with controller id $C$.
 \end{itemize}
 
 
 A valid transition is to set \textit{reducing} for a node to the creating controller node id and state root. 
+This transaction consumes the old resource and creates a new one: the only differentce being the \emph{reducing} field change.
 Removing a node $N$ takes several steps:
 \begin{itemize}
     \item Set \textit{reducing} for $N$ to the creating node $A$'s  controller id and state root.
     \item $N$ must endorse $A$, all of $N$'s parents must endorse $A$, and all of $N$'s children must endorse $A$.
-          This involves $N$'s controller updating its endorsement vector, and then updating $N$'s state root.
+          This involves $N$'s controller updating its endorsement map, and then updating $N$'s state root.
           In this way $N$'s controller ``remembers'' that it will be removed from the DAG.
           Furthermore, if $N$'s controller has forked, we force one side of each fork to commit to being the side in which $N$ is removed.
     \item $N$ must endorse all of its children, and all of $N$'s parents must endorse both $N$ and all of $N$'s children.
@@ -531,6 +546,159 @@ Removing a node $N$ takes several steps:
           It also ensures that the new parents of $N$'s children will respect the same commitments to conflicting branches that $N$ has made. 
     \item Finally, $N$ can be removed.
 \end{itemize}
+
+\begin{theorem}[Blocking Local Reduction preserves CCL]
+    Any set of resources created through any combination of the ``Creating a Resource'' procedure above, endorsement transactions, ``Condensing a Single Controller'' transactions, and Blocking Local Reduction transactions setting \emph{reducing} or removing $N$ will all have CCL.
+\end{theorem}
+\begin{proof}
+    Using these operations, for any resource $r$, for any resource $r^\prime$ in $r$'s history, EITHER there is a node in $r$'s controller DAG with $r^\prime$'s creating controller, and a state root after $r^\prime$ was created, OR such a node was removed using a Blocking Local Reduction (BLR) transaction in $r$'s history.
+    With these operations, every resource has CRH.
+    
+
+
+% ICS: not quite true:    In order to violate CCL, $r$'s controller DAG must feature 2 nodes, $B_1$ and $B_2$, with the same controller id ($B$) and \emph{conflicting} state roots: no state root can be provably after both.
+
+
+%   In order to violate CCL, resource $r$'s history includes 2 resources, $r^\prime$ and $r^{\prime\prime}$, such that $r^\prime$ and $r^{\prime\prime}$ have the same (unsafe) creating controller, and are created by the same controller on \emph{conflicting} traces: no safe controller can endorse a state root in which $r^\prime$ is created and a state root in which $r^{\prime\prime}$ is created. 
+   
+   In order to violate CCL, a resource $r$ with CRH must have a history including a double-consume: some resource $r^\prime$ is consumed twice.
+
+%   Therefore, in order to violate CCL, $r$'s history includes two BLR transactions, one removing a node after $r^\prime$'s creating node, and one removing a node after $r^{\prime\prime}$'s creating node. 
+
+%   For some serialized order of $r$'s history, let us consider the \emph{last} BLR transaction $t$ that is part of such a pair.
+%   The other element of the pair, $t^\prime$, removed another node ($B_1$) with the same (unsafe) controller and a conflicting state root. 
+
+
+
+%   Consider the set of all nodes in the DAGs of all the resources in $r$'s history. some of these are ``evil pairs'' (see below), and then prove you can't remove both sides of the last evil pair. 
+
+
+
+%   Define an ``evil pair'' as a pair of nodes with the same controller ID who conflict (cannot be totally ordered) and \emph{share a parent}: there is some ancestor node in history (different from controller DAG) of both such that the path from the ancestor to each element of the pair all have the same controller id. 
+%   Also, the ancestor has to be either not removable, or it must have a parent on another chain. 
+%   - otherwise, you could have a double-consumed resource, but it's a resource that is allowed to be created multiple times, so we don't care. 
+%     - ADD this to the definition of SRH, I guess, or maybe add some requirement about setting removable.
+%   Assert: you only violate CCL if your history (different from your controller DAG) has an evil pair (a double-consume, in particular).
+%   Assert: creating a node, and condensing a controller preserve evil pairs: for every evil pair before, there is an evil pair after with the same controller id. However, condensing a single controller can remove the common ancestor. 
+%   Assert: updating a node adds the "updated" node to the history DAG: ancestor is the old node, and child is the update transaction.
+%   Hard part: a BLR transaction cannot remove the last element of an evil pair from the controller DAG. 
+%   - Since they share a parent on the same controller, if they have an ancestor on another controller, it
+%   - ugh, this isn't working.
+
+
+
+Require that if you create a resource with no dependencies, \emph{removable} is set to false.
+
+\emph{every} time you create a resource, you update its creating controller node.
+Therefore if a resource updates 2 different ways (one might be an endorse and the other might be an operation that doesn't include that endorse), you have an \emph{conflicting pair} of \emph{resources}.
+The creating nodes of each are an \emph{evil pair} of nodes. 
+Consider the DAG $D$ of the \emph{consumed} resource, and the DAGs $E$ and $F$ of the conflicting pair. 
+These DAGs differ only from $D$ in a condense operation, the removal of a removable node, and the new creating node and possibly terminal nodes. 
+
+Consider a path $P_D$ through $D$ starting with a source and ending at $D$'s terminal node. 
+There is an equivalent path $P_E$ in $E$ that differs from $P_D$ only in the removal of removable nodes in $P_D$.
+Similar $P_F$.
+
+Somewhere in $P_D$ is a node with a controller that is still in $r$'s DAG, and therefore a controller that is correct.
+
+Let us consider these paths in terms of segments that share a controller. 
+When 2 such segments each contain an element of an evil pair, we will call the segments an evil pair. 
+
+When all elements of a segment are marked with $reducing\ne\bot$, we shall call the segment a \emph{reducing} segment. 
+(This implies that the segment is length 1). 
+
+Consider the pair of segments $X,Y$ which are parents of the evil pair's segments. 
+Either element of the original evil pair's segment pair is reducing, then consider their grandparent instead. 
+$X$ and $Y$ share a controller, $C$. 
+Any operations that don't remove an entire evil pair segment preserve the presence of an evil pair element in that segment.
+These segments cannot be completely removed unless $C$ endorses \emph{both} elements of the evil pair (which happens whether you're removing their segments or removing $X$ or $Y$).
+Such a conflicting double-endorsement creates an evil pair, each element of which has a path that is a sub-path of the original.
+
+
+
+
+
+
+
+
+
+Prove: you never go from 1 evil pair with an element in existence to 0 evil pairs with an element in existence. 
+
+
+
+
+
+For a resource $r$ with CRH, consider the DAG $D\p r$ whose nodes consist of all the nodes in all the controller DAGs of all the resources in $r$'s history (its dependencies, and their dependencies, etc.), and whose edges include all the edges from all the controller DAGs of all the resources in $r$'s history, an edge for each transaction setting a \emph{reducing} flag from the node with $\bot$ to the new node,  as well as an edge from each node removed in a \emph{condense} transaction to the node created in the \emph{condense} transaction. 
+
+Let an \emph{evil pair} $\an{x,y}$ from $D\p r$ be a pair of nodes in $D\p r$ with the same controller id, \emph{conflicting} state roots (neither can be provably after another), and a shared ancestor $s$ such that $s$ has the same controller id as $x$ and $y$, and there is a path from $s$ to $x$ in $D\p r$ consisting entirely of nodes with the same controller id, as well as a path from $s$ to $y$ in $D\p r$ consisting of nodes with the same controller id. 
+
+Note that any double-consume produces an evil pair. 
+
+Note that any evil pair's controller is unsafe, so if $r$ has a node in its controller DAG that is part of an evil pair, $r$ has CCL.
+
+
+
+If a resource $r$ has an unsafe controller in its affecting controllers, then it has CCL. 
+We therefore consider the case in which all the controllers in $r$'s affecting controllers are safe.
+We prove that any such $r$'s history has no evil pair. 
+
+Note that you can get from $D\p r$ to $r$'s controller DAG by going through the transactions in $r$'s history in some serial order consistent with their causal order, and removing nodes with each \emph{condense} and each \emph{BLR} transaction.
+We prove that you can't remove the last node which is an element of an evil pair:
+Suppose $y$ is the last element of any evil pair to be removed.
+Suppose that $x$ is the last element to be removed such that $\an{x,y}$ are an evil pair, with shared ancestor $s$.
+
+% Let $z$ be the ancestor of $x$ or $y$ with the last state root that is provably before both $x$ and $y$ and has \emph{reducing}=$\bot$.
+% ICS: note, $z$ does not technically have to be an ancestor of both x and y, just one.
+% TODO: may have to alter evil pair definition to require common ancestor with reducing=\bot
+% $z$ is not in $r$'s controller DAG, which means $z$ was removed, so there is some node at some point $z.controller$ 
+
+% At some point $z$ was removed.
+% That removal transaction requires a node $n$ with a state root after (and not equal to) $z$ (TODO: why?), on $x.controller$. 
+% why: well, removing $z$ requires a node that endorsed $z$, and then we update $z$
+% Node $n$ therefore conflicts with at least one of $x,y$. 
+% $z$'s parents (at the time of the removal) endorsed $n$.
+
+% Given that $z$ was removed, for all parents $p_z$ of $z$ in $D\p r$, $p_z$'s controller endorsed $z$. 
+% It either endorsed $z$ when $p_z$ was removed, or it endorsed $z$ when $z$ was removed, or $p_z$ has the same controller as $z$ (and $x$ and $y$). 
+
+Given that $x$ was removed, for all parents $p_x$ of $x$ in $D\p r$, $p_x$'s controller endorsed $x$. 
+It either endorsed $x$ when $p_x$ was removed, or it endorsed $x$ when $x$ was removed, or $p_x$ has the same controller as $x$ (and $y$). 
+
+Given that $y$ was removed, for all parents $p_y$ of $y$ in $D\p r$, $p_y$'s controller endorsed $y$. 
+It either endorsed $y$ when $p_y$ was removed, or it endorsed $y$ when $y$ was removed, or $p_y$ has the same controller as $y$ (and $x$). 
+
+All removable nodes have a parent.
+Since no node with $s$'s controller (or any unsafe controller) remains in $r$'s controller DAG, $s$ (and therefore $x$ and $y$), have some ancestor with an honest controller $a$ eventually became a parent of $y$. (also this requires that $y$ is last of the evil pair, uh...)
+Prove that this controller also endorsed $x$? I'm not sure it had to.
+
+
+
+
+%have an ancestor $a$ with an honest controller (such that all nodes between $a$ and $s$ were removed). 
+% Regardless of whether $a$ was ever removed from a controller DAG, $a$ is therefore a parent of both $x$ and $y$
+
+
+
+
+
+%In the transaction in which $x$ was removed, some terminal node $t_x$ endorsed all nodes with the same controller id as $x$, including the shared ancestor of $\an{x,y}$ (which may have been condensed into provably after node, but endorsing that still endorses the shared ancestor). 
+
+
+
+When $x$ was removed \dots 
+- TODO
+
+
+I think:
+- if you have some resource $r$, and in its DAG you have $a \rightarrow b$, but in $D\p r$, there is a path from $a$ to $b$ that passes through nodes with other controller ids, then the only way you could have gotten there is via a BLR transaction, so at some point $a$'s controller endorsed $b$'s controller, but they may have since been updated.
+- since you only remove one controller at a time, you if you had a path through different controllers $a \rightarrow b \rightarrow c \rightarrow \dots$, you actually have each endorsing the next, and also the last element. 
+- prove: in order to remove both elements of an evil pair, someone honest must double-endorse, which creates an evil pair, which violates our ``last'' assumption. 
+
+%   In order to violate CCL, $r$'s affecting controllers $\p A$ are all safe. 
+
+
+
+\end{proof}
 
 We elide the full CCL proof for brevity. 
 As a sketch, imagine two controller DAGs which together feature both sides of a branch (nodes which share an controller id and a parent, but are not provably before or after each other).
@@ -738,7 +906,7 @@ Unfortunately, this technique is not \emph{local}: it involves participation fro
 
 We allow a transaction to remove a single node from a resource DAG if:
 \begin{itemize}
-    \item the node's origin field is false
+    \item the node's removable field is true
     \item the node has parents (it is not a source in the DAG)
     \item all of the node's ancestors endorse the node
 \end{itemize}
