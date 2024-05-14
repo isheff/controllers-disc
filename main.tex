@@ -881,6 +881,20 @@ If you want to check, you can, but it requires acquiring more data.
 
 % How does Typhon implement ``signing'' a resource / state change exactly?
 % In fact, how do we specifically implement each of the anoma resource machine shell and core things, and how do we perform each of the operations listed above?
+
+\section{Future Work}
+There are several directions for future work. 
+For instance, although all the techniques we have found for preserving SRH are expensive~(\cref{sec:resourcevectorclocks}), we have not proven that preserving SRH is inherently expensive. 
+There may yet be some technique that is satisfactory. 
+
+Likewise, we have not proven that it is crucial for controllers to retain resource-specific records to allow endorsement-based reduction (e.g. sends and receives).
+There are almost certainly ways to batch and amortize these costs.
+Perhaps there is even a system that only requires endorsement maps, like \cref{sec:ancestral}, while preserving the local ``only neighbors in the controller DAG need to participate in a reduce operation'' property. 
+
+Furthermore, we make no claims about data availability, which is crucial for liveness.
+Despite ordering transactions, controllers do not necessarily need to be able to calculate their state: zero-knowledge proofs can show that a transaction is valid without revealing much of what happened in it~\cite{nova,resource}.
+We leave the difficult task of tracking what data needs to be available (including the current state of send and receive records), and to whom, to future work. 
+
  
 \section{Concluding remarks}
 We detail a technique for maintaining efficient controller labels with endorsement-based reduction.
