@@ -31,9 +31,57 @@
 
 \Copyright{Isaac Sheff and Christpher Goes} %TODO mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
 
-\ccsdesc[100]{\textcolor{red}{Replace ccsdesc macro with valid one}} %TODO mandatory: Please choose ACM 2012 classifications from https://dl.acm.org/ccs/ccs_flat.cfm 
+\begin{CCSXML}
+<ccs2012>
+<concept>
+<concept_id>10010520.10010575.10010577</concept_id>
+<concept_desc>Computer systems organization~Reliability</concept_desc>
+<concept_significance>500</concept_significance>
+</concept>
+<concept>
+<concept_id>10010520.10010521.10010537.10010540</concept_id>
+<concept_desc>Computer systems organization~Peer-to-peer architectures</concept_desc>
+<concept_significance>300</concept_significance>
+</concept>
+<concept>
+<concept_id>10011007.10010940.10010971.10011120</concept_id>
+<concept_desc>Software and its engineering~Distributed systems organizing principles</concept_desc>
+<concept_significance>100</concept_significance>
+</concept>
+<concept>
+<concept_id>10002951.10002952.10003190.10010832</concept_id>
+<concept_desc>Information systems~Distributed database transactions</concept_desc>
+<concept_significance>300</concept_significance>
+</concept>
+<concept>
+<concept_id>10002951.10003152.10003517.10003519</concept_id>
+<concept_desc>Information systems~Distributed storage</concept_desc>
+<concept_significance>100</concept_significance>
+</concept>
+<concept>
+<concept_id>10002978.10003006.10003013</concept_id>
+<concept_desc>Security and privacy~Distributed systems security</concept_desc>
+<concept_significance>500</concept_significance>
+</concept>
+<concept>
+<concept_id>10002978.10003006.10011608</concept_id>
+<concept_desc>Security and privacy~Information flow control</concept_desc>
+<concept_significance>300</concept_significance>
+</concept>
+</ccs2012>
+\end{CCSXML}
 
-\keywords{Dummy keyword} %TODO mandatory; please add comma-separated list of keywords
+\ccsdesc[500]{Computer systems organization~Reliability}
+\ccsdesc[300]{Computer systems organization~Peer-to-peer architectures}
+\ccsdesc[100]{Software and its engineering~Distributed systems organizing principles}
+\ccsdesc[300]{Information systems~Distributed database transactions}
+\ccsdesc[100]{Information systems~Distributed storage}
+\ccsdesc[500]{Security and privacy~Distributed systems security}
+\ccsdesc[300]{Security and privacy~Information flow control}
+
+
+
+\keywords{taint tracking, information flow control, endorsement, byzantine failures, cross-domain, serializabililty, trust, atomic transaction, blockchain} %TODO mandatory; please add comma-separated list of keywords
 
 \category{} %optional, e.g. invited paper
 
@@ -146,7 +194,7 @@ We define rules and procedures for creating, updating, transferring, and trackin
 \section{Introduction}
 Distributed platform interoperability is crucial to improve cost, usability, adoption, and even security. 
 When applications must share a state machine (or, more generally, \emph{controller}) to interact, there is an incentive to push all applications onto one controller trustworthy enough (and with enough throughput) for everyone. 
-Attempts to create such a controller typically require trust in a single authority (e.g. AWS\cite{citation-needed}) or an extremely expensive global consensus (e.g., Ethereum) and remain inadequate for some applications:
+Attempts to create such a controller typically require trust in a single authority (e.g. AWS\cite{appsync}) or an extremely expensive global consensus (e.g., Ethereum~\cite{ethereum}) and remain inadequate for some applications:
  JP~Morgan does not trust Ethereum to control their accounts~\cite{onyx}.
 In fact, it is unlikely that \emph{all} worthwhile applications will ever agree on a controller who can manage all of their state.
 This is why interoperability is so important: the internet works not because we all trust some single authority to manage all of it but because many different applications in different trust domains can interact. 
@@ -160,7 +208,7 @@ A controller can \emph{unwrap} a token with a simple but effective review of the
 It checks a crucial invariant: it will unwrap no more tokens of each type from each destination than it wrapped. 
 In this work, we generalize this controller history tracking and endorsement approach, and enable fully general transferable digital objects (not only tokens), with arbitrary transactions. 
 Crucially, this means generalizing resource histories from a list of wrapping controllers to a DAG.
-This endorsement approach differs somewhat from some Information Flow Control approaches~\cite{fabric, citation-needed}, in that we assume controllers can review and endorse entire execution traces of other controllers, and check for contradictions.
+This endorsement approach differs somewhat from some Information Flow Control approaches~\cite{fabric, Cecchetti2017}, in that we assume controllers can review and endorse entire execution traces of other controllers, and check for contradictions.
 
 Here, we introduce a novel protocol for controllers that enables very general operations across state machines with different trust domains.
 Our controller protocol will eventually be part of a larger unified cross-domain architecture, with standards for each state machine, as well as transferable objects called \emph{resources}~\cite{resource}.
@@ -189,8 +237,8 @@ Controllers do not necessarily compute and store this state themselves, although
 Committing to an ever-growing sequence of transactions, however, does require that controllers keep \textit{some} state, to ensure they do not \emph{fork}: commit two contradictory traces (neither is a prefix of the other).
 Forks are the essence of, for example, double-spend attacks~\cite{Abraham2017}.
 
-Trusting controllers is fundamental for digital objects: tables in Postgres maintain their invariants iff the database is working properly~\cite{citation-needed}.
-Similarly, a smart contract on Ethereum is consistent iff the Ethereum consensus is working properly\cite{citation-needed?}.
+Trusting controllers is fundamental for digital objects: tables in Postgres maintain their invariants iff the database is working properly~\cite{constraints}.
+Similarly, a smart contract on Ethereum is consistent iff the Ethereum consensus is working properly\cite{ethereum}.
 We categorize controllers in terms of safety and liveness:
 \begin{itemize}
 \item \emph{Safe} controllers commit transactions only in a totally ordered sequence (called a \emph{trace}): they do not fork.
@@ -211,11 +259,11 @@ Resources transition between these states in transactions ordered by controllers
 Each resource therefore specifies a single controller that can order transactions for each type of transition, ensuring there is a single authority in charge of deciding whether each transition has or has not occurred.
 Transactions which perform a state transition but are ordered by the wrong controller are \emph{invalid}.
 
-Each controller's state carries cryptographic accumulators (e.g. Merkle roots~\cite{citation-needed}) representing the set of resources created by transactions ordered by this controller and the set of resources consumed.
+Each controller's state carries cryptographic accumulators (e.g. Merkle roots~\cite{merkle}) representing the set of resources created by transactions ordered by this controller and the set of resources consumed.
 If a resource is neither created nor consumed, it is \emph{not yet created}.
 As part of their immutable data, resources can have complex proof obligations (which we call \emph{resource logics}) determining when they can be created or consumed, and these may depend on the state of other resources. % ICS: eliding for now: , even on other controllers.
 A resource logic can for example, specify exactly what programs can consume this resource: it would require a proof that the resources created are precisely the outputs of running a particular program with the consumed resources as inputs.
-Such a proof might be as simple as a full execution trace of the program, or as complex as a zero-knowledge proof~\cite{citation-needed}.
+Such a proof might be as simple as a full execution trace of the program, or as complex as a zero-knowledge proof~\cite{nova}.
 Through these logics, resources can encode fairly arbitrary state, not limited to scalar registers or tokens, while still allowing ZKP-style confidential transactions~\cite{resource}.
 
 \subsection{Transactions}
@@ -235,7 +283,7 @@ Any transaction with this resource as an input must be ordered by its terminal c
 This ensures there are never two controllers trying to consume the same resource with different transactions.
 For example, imagine a resource representing a token, created on some controller $A$.
 If controller $B$ orders a transaction that consumes this token in order to create a new token called \emph{Alice}, and controller $C$ orders a transaction that consumes this token in order to create a new token called \emph{Bob}, then we have a ``double-consume:'' together, \emph{Alice} and \emph{Bob}'s histories represent the token being consumed twice, which should not happen.
-This is clearly a problem if the tokens have, say, monetary value: it's a double-spend~\cite{citation-needed}.
+This is clearly a problem if the tokens have, say, monetary value: it's a double-spend~\cite{bitcoin}.
 Terminal controllers solve the problem: if the resource specifies it can only be used by transactions on $B$, then the token can only be double-spent if $B$ forks.
 
 We might imagine labels which include a set of \textit{affecting} controllers, who have influenced this resource's history (or provenance).
@@ -528,7 +576,7 @@ To ensure CRH, any resource with a creating controller other than the terminal c
 A created resource can \textit{depend} on input resources, meaning the new resource's history includes those input resources, and their histories. 
 In general, it is safe for a created resource to depend on all the input resources used in proofs of the resource's logic; this would work for very general applications.
 However, we might allow resource logics to specify a subset of the input resources on which they depend. 
-We might imagine a UTXO-style currency application~\cite{citation-needed} which tracks only input resources of the same currency as dependencies: anything which was necessary to authorize a ``spend'' isn't considered part of the history of the currency resource.
+We might imagine a UTXO-style currency application~\cite{utxo} which tracks only input resources of the same currency as dependencies: anything which was necessary to authorize a ``spend'' isn't considered part of the history of the currency resource.
 
 The resource's creating id is the id of the controller ordering the transaction that created it: this matches the terminal id of all the input resources.
 If the resource's terminal id is another controller, this is a \emph{transfer}: the transaction must also produce a corresponding \emph{send} record. 
@@ -852,7 +900,7 @@ This can happen even if the controller appears only once in the DAG: the ``other
 The easiest way to verify SRH of a resource or set of resources is to get a recent state root from each of the controller ids in their controller DAGs (and creating controllers), as well as all of their corresponding endorsed state roots for all the controller ids in the DAGs (and creating controllers), and then prove that for each controller: the ``recent'' state root is provably after all of the endorsed state roots or state roots in the DAG.
 This would prove that no one has endorsed any fork contrary to the state roots in the DAG, and so the history is consistent. 
 
-To understand why this holds, consider that a node with no parents cannot be removed (its send must have \emph{removable}=false), and if a node with an honest parent has forked, both sides of the fork cannot be removed without the honest parent endorsing one side of the fork.
+To understand why this holds, consider that a node with no parents cannot be removed (its send must have \emph{removable}=false), and if a node with an honest parent has forked, both sides cannot be removed without the honest parent endorsing one.
 The honest parent then cannot be removed from the other side, as it cannot endorse the contradictory send.
 
 To ensure this information is always available would require each resource to carry an awful lot of information.
@@ -893,7 +941,7 @@ Perhaps there is even a system that only requires endorsement maps, like \cref{s
 
 Furthermore, we make no claims about data availability, which is crucial for liveness.
 Despite ordering transactions, controllers do not necessarily need to be able to calculate their state: zero-knowledge proofs can show that a transaction is valid without revealing much of what happened in it~\cite{nova,resource}.
-We leave the difficult task of tracking what data needs to be available (including the current state of send and receive records), and to whom, to future work. 
+We leave the difficult task of tracking what data needs to be available (e.g. current state of send and receive records), and to whom, to future work. 
 
  
 \section{Concluding remarks}
