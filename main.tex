@@ -180,7 +180,6 @@ Without some kind of controller, different parties may have contradictory notion
 In a distributed system, some controllers may be \emph{Byzantine}, and make duplicitous or incoherent statements about state. 
 
 Here we design rules and procedures for a multi-state-machine ecosystem, featuring digital objects, or \emph{resources}, with application-defined state-dependent rules for how they can be updated. 
-% ICS: not relevant to this paper: Resources can even be \emph{shielded}, where the and state of the resource is hidden from the controller itself. 
 Each controller can express an authoritative state, including authoritative resource states. 
 Each resource is also labeled with a controller identifier, whose state is definitive for this resource. 
 Resources can transfer between controllers, and updates can depend on multiple resources, so resource labels also express a \emph{dependency graph} detailing which controllers, if they were Byzantine, may have corrupted this resource.
@@ -202,7 +201,7 @@ This is why interoperability is so important: the internet works not because we 
 Nevertheless, cross-domain data integrity remains a challenge.
 While  existing systems can track controllers that may have affected each datum~\cite{dista,fabric}, these can easily lead to a state explosion: each object's label features an ever-growing set of controllers that may have affected it. 
 In blockchain ecosystems, some protocols cleverly get around this: objects can reduce their labeling burden when one controller \emph{endorses} another, reviewing (some part of) its history and, crucially, pledging not to endorse a contradictory history.
-For example, blockchains can create \emph{wrapped} tokens with IBC and ICS20~\cite{wrapped,ibc, ics20}. 
+For example, blockchains can create \emph{wrapped} tokens with IBC and ICS20~\cite{wrapped,ibc,ics20}. 
 A wrapper represents a controller that had previously controlled the token, and nested wrappers represent a list of controllers. 
 A controller can \emph{unwrap} a token with a simple but effective review of the wrapped token history. 
 It checks a crucial invariant: it will unwrap no more tokens of each type from each destination than it wrapped. 
@@ -212,7 +211,7 @@ This endorsement approach differs somewhat from some Information Flow Control ap
 
 Here, we introduce a novel protocol for controllers that enables very general operations across state machines with different trust domains.
 Our controller protocol will eventually be part of a larger unified cross-domain architecture, with standards for each state machine, as well as transferable objects called \emph{resources}~\cite{resource}.
-Here, we detail controller operations that allow our architecture to generalize many existing techniques (including many cross-chain and side-chain operations). 
+We detail controller operations that allow our architecture to generalize many existing techniques (including many cross-chain and side-chain operations). 
 
 
 
@@ -245,7 +244,7 @@ We categorize controllers in terms of safety and liveness:
 The \emph{state} of a valid controller is unique and defined as the result serially applying the transactions (atomic transitions defined by the state machine) in the trace committed, and ignoring any \emph{invalid} transactions (as defined by the state machine).
   \emph{Unsafe} controllers are also called \emph{malicious} or \emph{Byzantine}.  
 \item \emph{Live} controllers eventually respond to valid queries, and append valid transactions to their trace.
-  Controllers that are not live are called \emph{unlive}, \emph{crash-prone}, or sometimes just \emph{crashed}.
+  Controllers that are not live are called \emph{unlive} or \emph{crash-prone}.
 \end{itemize}
 In general, we assume all unsafe controllers are unlive: controllers that don't follow the specification could ignore all queries.
 
@@ -355,7 +354,7 @@ In~\cref{sec:resourcevectorclocks}, we detail a technique for maintaining SRH fo
 Instead, we allow users to introduce a little trust into the system, and dramatically improve day-to-day operations.
 We will detail techniques for checking SRH while using our technique, but each check can require a lot of information.
 
-\subsection{Consistent Controller Label (CCL)}
+\subsection{Consistent Controller Labels (CCL)}
 % ICS: unclear how this sentence was supposed to help here: In general, a safe controller never uses a resource as a transaction input after it has been consumed: all inputs to any transaction it commits are created, unconsumed resources, and the transaction consumes (some subset of) those inputs, and creates new resources. 
 The \emph{Consistent Controller Labels}  property (CCL) requires that if some resource~$r$ does not have SRH, then it has an unsafe controller in the \textit{affecting controllers} set in its label.
 With CRH, if a user \textit{trusts} that a resource's affecting controllers are all safe, they can be sure the resource has SRH. 
@@ -438,7 +437,7 @@ If the transferred resource has ancestors from another controller, the \emph{inc
 Similarly, the \emph{outgoing} field represents the destination of the transfer. 
 This can be updated as part of the reducing process~(\cref{sec:reducing}). 
 If a send record's \emph{updatable} field is false, it becomes immutable: it can never change again.
-This is used in observer graph reduction~(\cref{sec:reducing}).
+This is used in controller DAG reduction~(\cref{sec:reducing}).
 
 A \emph{send} record represents a \emph{promise}: when one controller transfers a resource to another, it promises to accept those resources, or new resources created using those, in transfers back. 
 Pending a review of the returned resources' history, these can be treated just like resources created on the original sending controller. 
@@ -594,8 +593,8 @@ In order to create a resource on one controller and consume it on another, there
 First, in a transaction on the sending controller:
 \begin{itemize}
 \item Create a new send id
-\item Create the ``sent'' resource: it must have a new unique controller DAG sink: this send id. Do not add this resource to any receive record's \emph{live} field. 
-\item add this send id to the \emph{outgoing} field of all the receives in the resource's \emph{receives} field.
+\item Create the ``sent'' resource: it must have a new unique controller DAG sink: this send id. This resource's \emph{receives} field is empty. Do not add this resource to any receive record's \emph{live} field. 
+\item add this send id to the \emph{outgoing} field of all the receives in the resource's dependencies' \emph{receives} fields.
 \item Create a new send record with this new send id, referencing this resource, with \emph{incoming} set to the union of all of the receives of the dependencies. 
 \end{itemize}
 Second, on the receiving controller:
@@ -741,22 +740,22 @@ In~\cref{fig:reduce-proof}, we illustrate this process with $Y=\cb{s_2}$, $X=\cb
 \item For each controller in $C\p Z$:
   \begin{itemize}
     \item endorse all roots in $R_Y$.
-    \item for each controller in $C\p X$, endorse a state root after all elements of $X$ were created. This essentially just recognizes that everything in $X$ has indeed occurred. 
+    \item for each controller in $C\p X$, endorse a state root after all elements of $X$ on that controller were created. This essentially just recognizes that everything in $X$ has indeed occurred. 
     \item Update all receives $z \in Z$ by removing elements of $Y$ in $z.incoming$ and adding all elements of $a\p z$ to $z.incoming$~(\cref{fig:redirect}).
-      Effectively, controller in $C\p Z$, having reviewd the history of $X\p Y$, accepts responsibility for the history (from $X$ onward) of the resources received.
+      Effectively, controller in $C\p Z$, having reviewed the history of $C\p Y$, accepts responsibility for the history (from $X$ onward) of the resources received.
   \end{itemize}
 \item let $R_Z$ be the set of state roots of $C_Z$ just after completing step 3.
 \item For each controller in $c \in C_X$:
   \begin{itemize}
      \item endorse $R_Y$ and $R_Z$.
-     \item update all elements $x\in X$ to include outgoing references to the receives $Z$ \emph{after} $Y$:  $C\p z \in x.outgoing$ if $\exists z \in Z : c \in z.incoming$~(\cref{fig:update}). 
+     \item update all elements $x\in X$ to include outgoing references to the receives $Z$:  $C\p z \in x.outgoing$ if $\exists z \in Z : c \in z.incoming$~(\cref{fig:update}). 
   \end{itemize}
 \item The \emph{reduce proof} for each $y\in Y$ is a collection of state roots from all the controllers in $C\p X, C\p Y$, and $C\p Z$, with proofs that the above steps have happened.
       These proofs show that $\forall y\in Y: y.updatable$=false, all $z\in Z$ now have \emph{incoming} sends from $X$, and all $x\in X$ have been updated to refer to $C\p Z$ where appropriate. 
 \end{enumerate}
 
 Once enough reduce proofs have been generated, we can even garbage collect some send and receive records~(\cref{fig:garbage}). 
-Specifically, when a send record $s_0$ has a controller $B$ in its \emph{outgoing} field, but all a receive records $r_1$ on $B$ receiving $s_0$ have an empty \emph{live} field, and there are reduce proofs for all the sends \emph{$r_1$.outgoing}, (and $B$ has endorsed state roots proving this is the case) we can remove $B$ from the $s_0$\emph{.outgoing}. 
+Specifically, when a send record $s_0$ on controller $A$ has a controller $B$ in its \emph{outgoing} field, but all receive records $r_1$ on $B$ receiving $s_0$ have an empty \emph{live} field, and there are reduce proofs for all the sends \emph{$r_1$.outgoing}, (and $A$ and $B$ has endorsed state roots proving this is the case) we can remove $B$ from the $s_0$\emph{.outgoing}. 
 
 Once all a receive record's incoming sends have removed that receive record's controller from their outgoing fields (and the receive record's controller has endorsed state roots that prove this), we can garbage collect the receive record: it will no longer be used. 
 Once all of a send record's \emph{incoming} receive records are garbage collected (if the send record has \emph{removable}=true), we know that send will no longer be used, and can garbage collect it.
@@ -771,7 +770,7 @@ First, $r$'s terminal controller must endorse all the state roots in the proof.
 Then each node in $r$'s controller DAG must update its state root to whichever is provably after the other: the state root it currently has or the state root with the same controller in the proof. 
 (If there is a state root with the same controller in the proof, but neither is provably after the other, this remove operation is not valid.)
 Then it can remove $n$ from the controller DAG, and add edges from all of $n$'s parents to all of $n$'s children. 
-For example, given a reduce proof for $s_2$, we could reduce the controller DAG of resource 9 (\cref{fig:saladfork}) from:
+For example, given a reduce proof for $s_2$, we could reduce the controller DAG of resource 9 (\cref{fig:saladfork}):
 
 \begin{center}
 \begin{tikzpicture}
